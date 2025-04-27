@@ -1,7 +1,10 @@
+import logging
 from telegram import Update
 from telegram.ext import ContextTypes, CommandHandler, MessageHandler, filters
 from libs.tarkov_api import TarkovMarketAPI
 from libs.config import Config, load_config
+
+logger = logging.getLogger(__name__)
 
 def setup_handlers(application):
     config = load_config()
@@ -25,6 +28,8 @@ def setup_handlers(application):
     async def search_item(update: Update, context: ContextTypes.DEFAULT_TYPE, item_name=None):
         if item_name is None:
             item_name = update.message.text
+        
+        logger.info(f"用户查询: {item_name} (用户ID: {update.effective_user.id})")
             
         items = api.search_item(item_name)
         
@@ -33,6 +38,7 @@ def setup_handlers(application):
             return
             
         item = items[0]
+        logger.info(f"查询结果: {item['name']} - 价格: {item['price']} ₽")
         message = (
             f"物品: {item['name']}\n"
             f"当前价格: {item['price']} ₽\n"
