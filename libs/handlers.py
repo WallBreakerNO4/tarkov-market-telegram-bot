@@ -1,7 +1,7 @@
 from telegram import Update
 from telegram.ext import ContextTypes, CommandHandler, MessageHandler, filters
-from tarkov_api import TarkovMarketAPI
-from config import Config, load_config
+from libs.tarkov_api import TarkovMarketAPI
+from libs.config import Config, load_config
 
 def setup_handlers(application):
     config = load_config()

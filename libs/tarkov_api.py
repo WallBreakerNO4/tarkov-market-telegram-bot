@@ -1,5 +1,5 @@
 import requests
-from config import Config
+from libs.config import Config
 
 class TarkovMarketAPI:
     BASE_URL = "https://api.tarkov-market.app/api/v1"
