@@ -1,0 +1,12 @@
+services:
+  tarkov-telegram-bot:
+    build: .
+    container_name: tarkov-telegram-bot
+    restart: unless-stopped
+    environment:
+      - https_proxy=http://host.docker.internal:7890
+      - http_proxy=http://host.docker.internal:7890
+      - all_proxy=socks5://host.docker.internal:7890
+      - no_proxy=localhost, 127.0.0.1, ::1, .local, .localdomain, 192.168.0.0/16, 172.16.0.0/12, 10.0.0.0/8, 100.64.0.0/10
+    extra_hosts:
+      - host.docker.internal:host-gateway
