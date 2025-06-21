@@ -10,3 +10,5 @@ services:
       - no_proxy=localhost, 127.0.0.1, ::1, .local, .localdomain, 192.168.0.0/16, 172.16.0.0/12, 10.0.0.0/8, 100.64.0.0/10
     extra_hosts:
       - host.docker.internal:host-gateway
+    volumes:
+      - ./.env:/app/.env
