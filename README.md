@@ -5,7 +5,7 @@
 ## 环境要求
 - Python 3.8+
 - Telegram Bot Token
-- Tarkov Market API密钥(需要Pro账户)
+- tarkov.dev API（免费，无需密钥）
 
 ## 安装步骤
 
@@ -14,10 +14,11 @@
 cp .env.example .env
 ```
 
-2. 编辑.env文件，填写你的API密钥
+2. 编辑.env文件，填写你的配置
 ```
 TELEGRAM_BOT_TOKEN=你的Telegram机器人令牌
-TARKOV_MARKET_API_TOKEN=你的Tarkov Market API密钥
+# 已迁移到 tarkov.dev（免费），无需 API Token；保留兼容旧配置
+TARKOV_MARKET_API_TOKEN=
 ```
 
 3. 安装依赖
@@ -36,4 +37,4 @@ python bot.py
 - 显示商人回收价格
 
 ## API使用限制
-请遵守[Tarkov Market API条款](https://tarkov-market.com/dev/api)
+请遵守[tarkov.dev](https://tarkov.dev/) 的相关使用条款与限制
