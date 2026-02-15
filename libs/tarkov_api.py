@@ -1,25 +1,26 @@
 import requests
-from typing import Any, Dict, List
+from typing import Any, Dict, List, TYPE_CHECKING
 
-from libs.config import Config
+if TYPE_CHECKING:
+    from libs.config import Config
 
 
 class TarkovMarketAPI:
     GRAPHQL_URL = "https://api.tarkov.dev/graphql"
 
-    def __init__(self, config: Config):
+    def __init__(self, config: "Config"):
         self.api_key = config.tarkov_api_key
         self.end_point_type = config.end_point_type
         self.game_mode = "pve" if self.end_point_type == "pve" else "regular"
         self.lang = "zh"
         print(f"当前API端点模式: {self.end_point_type.upper()}")
 
-    def _post_graphql(self, query: str, variables: dict):
+    def _post_graphql(self, query: str, variables: dict, timeout: int = 10):
         try:
             response = requests.post(
                 self.GRAPHQL_URL,
                 json={"query": query, "variables": variables},
-                timeout=10,
+                timeout=timeout,
             )
             response.raise_for_status()
             payload = response.json()
@@ -167,6 +168,131 @@ query SearchItems($name: String!, $lang: LanguageCode, $gameMode: GameMode, $lim
             results[0]["avg7daysPrice"] = avg7
 
         return results
+
+    def fetch_all_items(self, limit: int = 10000):
+        query = """
+query AllItems($lang: LanguageCode, $gameMode: GameMode, $limit: Int, $offset: Int) {
+  items(lang: $lang, gameMode: $gameMode, limit: $limit, offset: $offset) {
+    id
+    name
+    avg24hPrice
+    lastLowPrice
+    sellFor {
+      price
+      source
+      vendor {
+        name
+        normalizedName
+      }
+    }
+  }
+}
+"""
+        data = self._post_graphql(
+            query,
+            {
+                "lang": self.lang,
+                "gameMode": self.game_mode,
+                "limit": limit,
+                "offset": 0,
+            },
+            timeout=30,
+        )
+        if not data:
+            return None
+
+        items = data.get("items") or []
+        if not items:
+            return None
+
+        results = []
+        for raw in items:
+            if not isinstance(raw, dict):
+                continue
+
+            item_id = raw.get("id")
+            name = raw.get("name")
+            if not isinstance(item_id, str) or not item_id:
+                continue
+            if not isinstance(name, str) or not name:
+                continue
+
+            item: Dict[str, Any] = {"uid": item_id, "name": name}
+
+            last_low_price = raw.get("lastLowPrice")
+            if isinstance(last_low_price, int):
+                item["price"] = last_low_price
+
+            avg24h_price = raw.get("avg24hPrice")
+            if isinstance(avg24h_price, int):
+                item["avg24hPrice"] = avg24h_price
+
+            trader_name, trader_price = self._best_trader_sell_for(raw.get("sellFor"))
+            if trader_name is not None:
+                item["traderName"] = trader_name
+            if trader_price is not None:
+                item["traderPrice"] = trader_price
+
+            results.append(item)
+
+        return results or None
+
+    def fetch_all_item_names(self, lang: str, limit: int = 10000):
+        query = """
+query AllItemNames($lang: LanguageCode, $gameMode: GameMode, $limit: Int, $offset: Int) {
+  items(lang: $lang, gameMode: $gameMode, limit: $limit, offset: $offset) {
+    id
+    name
+    normalizedName
+    shortName
+  }
+}
+"""
+        data = self._post_graphql(
+            query,
+            {
+                "lang": lang,
+                "gameMode": self.game_mode,
+                "limit": limit,
+                "offset": 0,
+            },
+            timeout=30,
+        )
+        if not data:
+            return None
+
+        items = data.get("items") or []
+        if not items:
+            return None
+
+        results = []
+        for raw in items:
+            if not isinstance(raw, dict):
+                continue
+
+            item_id = raw.get("id")
+            name = raw.get("name")
+            if not isinstance(item_id, str) or not item_id:
+                continue
+            if not isinstance(name, str) or not name:
+                continue
+
+            item: Dict[str, Any] = {
+                "uid": item_id,
+                "name": name,
+            }
+
+            normalized_name = raw.get("normalizedName")
+            if isinstance(normalized_name, str) and normalized_name:
+                item["normalizedName"] = normalized_name
+
+            short_name = raw.get("shortName")
+            if isinstance(short_name, str) and short_name:
+                item["shortName"] = short_name
+
+            results.append(item)
+
+        return results or None
 
     def get_item_by_uid(self, uid: str):
         query = """
