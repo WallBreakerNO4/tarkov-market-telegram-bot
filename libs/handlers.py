@@ -1,7 +1,12 @@
+import asyncio
 import logging
+from pathlib import Path
+
 from telegram import Update, MessageEntity  # 确保 MessageEntity 已导入
 from telegram.ext import ContextTypes, CommandHandler, MessageHandler, filters
+
 from libs.tarkov_api import TarkovMarketAPI
+from libs.item_cache import SqliteItemCache
 from libs.config import load_config  # config 类不再需要单独导入
 
 logger = logging.getLogger(__name__)
@@ -13,6 +18,7 @@ async def _search_and_reply(
     context: ContextTypes.DEFAULT_TYPE,
     item_name: str,
     tarkov_api: TarkovMarketAPI,
+    cache: SqliteItemCache,
 ):
     user = update.effective_user
     chat = update.effective_chat
@@ -23,7 +29,16 @@ async def _search_and_reply(
 
     logger.info(f"用户查询: {item_name} (用户ID: {user_id}, 聊天ID: {chat_id})")
 
-    items = tarkov_api.search_item(item_name)
+    loop = asyncio.get_running_loop()
+    try:
+        items = await loop.run_in_executor(
+            None, cache.search_items, item_name, tarkov_api
+        )
+    except Exception:
+        logger.exception("缓存查询失败")
+        if message:
+            await message.reply_text("缓存刷新失败，请稍后再试。")
+        return
 
     if not message:
         logger.warning("无法回复：Update 中缺少 message")
@@ -58,6 +73,8 @@ async def _search_and_reply(
 def setup_handlers(application):
     config = load_config()
     api = TarkovMarketAPI(config)  # API实例在设置处理器时创建一次
+    db_path = str(Path(__file__).resolve().parent.parent / "db.sqlite3")
+    cache = SqliteItemCache(db_path=db_path, ttl_seconds=300)
 
     # 2. 更新 /start 命令的帮助信息
     async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -85,7 +102,7 @@ def setup_handlers(application):
             await message.reply_text("请提供物品名称。用法: `/price [物品名]`")
             return
         item_name = " ".join(context.args)
-        await _search_and_reply(update, context, item_name, api)
+        await _search_and_reply(update, context, item_name, api, cache)
 
     # 4. 添加处理 @机器人名称 <物品名> 的新处理器
     async def mention_search(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -122,7 +139,7 @@ def setup_handlers(application):
                         break
 
         if item_name_from_mention:  # 如果成功从提及中提取到物品名
-            await _search_and_reply(update, context, item_name_from_mention, api)
+            await _search_and_reply(update, context, item_name_from_mention, api, cache)
         elif message.text.startswith(mention_string) and not item_name_from_mention:
             # 如果是 @机器人 但后面没有物品名
             await message.reply_text(
@@ -140,7 +157,7 @@ def setup_handlers(application):
             return
 
         item_name = message.text
-        await _search_and_reply(update, context, item_name, api)
+        await _search_and_reply(update, context, item_name, api, cache)
 
     # 注册所有处理器
     application.add_handler(CommandHandler("start", start))
