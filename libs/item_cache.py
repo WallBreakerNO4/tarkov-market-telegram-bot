@@ -31,9 +31,15 @@ LANGUAGES = [
 
 
 class SqliteItemCache:
-    def __init__(self, db_path: str = "db.sqlite3", ttl_seconds: int = 300):
+    def __init__(
+        self,
+        db_path: str = "db.sqlite3",
+        ttl_seconds: int = 300,
+        request_delay_seconds: float = 0.0,
+    ):
         self.db_path = db_path
         self.ttl_seconds = ttl_seconds
+        self.request_delay_seconds = request_delay_seconds
         self._refresh_lock = threading.Lock()
 
         with self._connect() as conn:
@@ -123,11 +129,17 @@ class SqliteItemCache:
         if not items:
             raise RuntimeError("全量刷新失败：API 未返回 items")
 
+        if self.request_delay_seconds > 0:
+            time.sleep(self.request_delay_seconds)
+
         names_rows = []
         for lang in LANGUAGES:
             names = api.fetch_all_item_names(lang=lang, limit=10000)
             if not names:
                 raise RuntimeError(f"全量刷新失败：API 未返回 item names (lang={lang})")
+
+            if self.request_delay_seconds > 0:
+                time.sleep(self.request_delay_seconds)
 
             for item in names:
                 item_id = item.get("uid")
@@ -189,6 +201,10 @@ class SqliteItemCache:
             len(rows),
             len(names_rows),
         )
+
+    def refresh_all_threadsafe(self, api: TarkovMarketAPI) -> None:
+        with self._refresh_lock:
+            self.refresh_all(api)
 
     def _query_by_name(
         self, conn: sqlite3.Connection, item_name: str, limit: int
@@ -304,18 +320,14 @@ class SqliteItemCache:
         return results
 
     def search_items(
-        self, item_name: str, api: TarkovMarketAPI, limit: int = 5
+        self, item_name: str, limit: int = 5
     ) -> Optional[List[Dict[str, Any]]]:
-        if not self.is_fresh():
-            with self._refresh_lock:
-                if not self.is_fresh():
-                    self.refresh_all(api)
+        if self._refreshed_at() is None:
+            raise RuntimeError("缓存未初始化")
 
-        if not self.is_fresh():
-            raise RuntimeError("缓存刷新后仍不可用")
-
-        with self._connect() as conn:
-            self._ensure_schema(conn)
-            results = self._query_by_name(conn, item_name, limit)
+        with self._refresh_lock:
+            with self._connect() as conn:
+                self._ensure_schema(conn)
+                results = self._query_by_name(conn, item_name, limit)
 
         return results or None

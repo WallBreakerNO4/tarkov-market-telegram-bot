@@ -1,5 +1,7 @@
 import asyncio
 import logging
+import threading
+import time
 from pathlib import Path
 
 from telegram import Update, MessageEntity  # 确保 MessageEntity 已导入
@@ -31,13 +33,11 @@ async def _search_and_reply(
 
     loop = asyncio.get_running_loop()
     try:
-        items = await loop.run_in_executor(
-            None, cache.search_items, item_name, tarkov_api
-        )
+        items = await loop.run_in_executor(None, cache.search_items, item_name)
     except Exception:
         logger.exception("缓存查询失败")
         if message:
-            await message.reply_text("缓存刷新失败，请稍后再试。")
+            await message.reply_text("缓存未就绪，请稍后再试。")
         return
 
     if not message:
@@ -74,7 +74,25 @@ def setup_handlers(application):
     config = load_config()
     api = TarkovMarketAPI(config)  # API实例在设置处理器时创建一次
     db_path = str(Path(__file__).resolve().parent.parent / "db.sqlite3")
-    cache = SqliteItemCache(db_path=db_path, ttl_seconds=300)
+    cache = SqliteItemCache(
+        db_path=db_path,
+        ttl_seconds=config.cache_refresh_interval_seconds,
+        request_delay_seconds=config.cache_refresh_request_delay_seconds,
+    )
+
+    def _cache_refresher_loop() -> None:
+        while True:
+            try:
+                cache.refresh_all_threadsafe(api)
+            except Exception:
+                logger.exception("后台缓存刷新失败")
+            time.sleep(config.cache_refresh_interval_seconds)
+
+    threading.Thread(
+        target=_cache_refresher_loop,
+        name="cache_refresher",
+        daemon=True,
+    ).start()
 
     # 2. 更新 /start 命令的帮助信息
     async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
