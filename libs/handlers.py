@@ -14,14 +14,23 @@ async def _search_and_reply(
     item_name: str,
     tarkov_api: TarkovMarketAPI,
 ):
-    logger.info(
-        f"用户查询: {item_name} (用户ID: {update.effective_user.id}, 聊天ID: {update.effective_chat.id})"
-    )
+    user = update.effective_user
+    chat = update.effective_chat
+    message = update.effective_message
+
+    user_id = user.id if user else "unknown"
+    chat_id = chat.id if chat else "unknown"
+
+    logger.info(f"用户查询: {item_name} (用户ID: {user_id}, 聊天ID: {chat_id})")
 
     items = tarkov_api.search_item(item_name)
 
+    if not message:
+        logger.warning("无法回复：Update 中缺少 message")
+        return
+
     if not items:
-        await update.message.reply_text("未找到该物品。")
+        await message.reply_text("未找到该物品。")
         return
 
     # 假设总是取API返回的第一个结果
@@ -43,7 +52,7 @@ async def _search_and_reply(
         f"商人: {trader_name} ({trader_price} ₽)"
     )
 
-    await update.message.reply_text(message_text)  # 默认以纯文本发送
+    await message.reply_text(message_text)  # 默认以纯文本发送
 
 
 def setup_handlers(application):
@@ -53,7 +62,10 @@ def setup_handlers(application):
     # 2. 更新 /start 命令的帮助信息
     async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         bot_username = context.bot.username  # 在函数内部获取机器人用户名
-        await update.message.reply_text(
+        message = update.effective_message
+        if not message:
+            return
+        await message.reply_text(
             "欢迎使用塔科夫市场查询机器人！\n\n"
             f"🔹 **私聊我**: 直接发送物品名称即可查询价格。\n"
             f"   例如: `显卡`\n\n"
@@ -66,23 +78,26 @@ def setup_handlers(application):
 
     # 3. 修改 /price 命令处理器
     async def price_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+        message = update.effective_message
+        if not message:
+            return
         if not context.args:
-            await update.message.reply_text("请提供物品名称。用法: `/price [物品名]`")
+            await message.reply_text("请提供物品名称。用法: `/price [物品名]`")
             return
         item_name = " ".join(context.args)
         await _search_and_reply(update, context, item_name, api)
 
     # 4. 添加处理 @机器人名称 <物品名> 的新处理器
     async def mention_search(update: Update, context: ContextTypes.DEFAULT_TYPE):
-        message = update.message
+        chat = update.effective_chat
+        message = update.effective_message
         if not message or not message.text:  # 确保消息和文本存在
             return
 
         # 此处理器仅用于群组和超级群组
-        if not (
-            update.effective_chat.type == "group"
-            or update.effective_chat.type == "supergroup"
-        ):
+        if not chat:
+            return
+        if not (chat.type == "group" or chat.type == "supergroup"):
             return
 
         bot_username = context.bot.username
@@ -91,8 +106,9 @@ def setup_handlers(application):
         item_name_from_mention = None
 
         # 检查消息实体，确保第一个实体是提及机器人
-        if message.entities:
-            for entity in message.entities:
+        entities = message.entities or []
+        if entities:
+            for entity in entities:
                 if (
                     entity.type == MessageEntity.MENTION and entity.offset == 0
                 ):  # 提及在消息开头
@@ -116,14 +132,15 @@ def setup_handlers(application):
     # 5. 修改原有的文本消息处理器，使其仅在私聊中生效
     async def private_text_search(update: Update, context: ContextTypes.DEFAULT_TYPE):
         # 仅在私聊中处理，并且消息不是命令
-        if (
-            update.effective_chat.type == "private"
-            and update.message
-            and update.message.text
-            and not update.message.text.startswith("/")
-        ):
-            item_name = update.message.text
-            await _search_and_reply(update, context, item_name, api)
+        chat = update.effective_chat
+        message = update.effective_message
+        if not chat or chat.type != "private" or not message or not message.text:
+            return
+        if message.text.startswith("/"):
+            return
+
+        item_name = message.text
+        await _search_and_reply(update, context, item_name, api)
 
     # 注册所有处理器
     application.add_handler(CommandHandler("start", start))
