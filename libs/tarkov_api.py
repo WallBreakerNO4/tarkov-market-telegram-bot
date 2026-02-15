@@ -13,11 +13,12 @@ class TarkovMarketAPI:
         self.end_point_type = config.end_point_type
         self.game_mode = "pve" if self.end_point_type == "pve" else "regular"
         self.lang = "zh"
+        self._session = requests.Session()
         print(f"当前API端点模式: {self.end_point_type.upper()}")
 
     def _post_graphql(self, query: str, variables: dict, timeout: int = 10):
         try:
-            response = requests.post(
+            response = self._session.post(
                 self.GRAPHQL_URL,
                 json={"query": query, "variables": variables},
                 timeout=timeout,
