@@ -1,4 +1,0 @@
-python-telegram-bot[socks]
-asyncio
-python-dotenv
-requests
