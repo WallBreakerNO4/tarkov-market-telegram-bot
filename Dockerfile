@@ -1,8 +1,15 @@
 FROM python:3.14-slim
-COPY requirements.txt /app/requirements.txt
+
 WORKDIR /app
-RUN pip install -i https://mirrors.tuna.tsinghua.edu.cn/pypi/web/simple --no-cache-dir -r requirements.txt 
-#COPY . /app
+
+COPY --from=ghcr.io/astral-sh/uv:latest /uv /uvx /bin/
+
+COPY pyproject.toml uv.lock /app/
+ENV UV_NO_DEV=1
+RUN uv sync --locked --no-install-project
+
 COPY bot.py /app/bot.py
 COPY libs /app/libs
+
+ENV PATH="/app/.venv/bin:$PATH"
 CMD ["python", "bot.py"]
